@@ -1,6 +1,6 @@
 [package]
 name = "agg-files"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
 authors = ["Seth Horsley <git-public.ch12j@seth4242.com>"]
 description = "A command-line tool for aggregating and displaying file contents from local and GitHub repositories"

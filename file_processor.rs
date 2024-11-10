@@ -31,34 +31,40 @@ impl FileProcessor {
 
     pub fn process(&self) {
         for pattern in &self.args.patterns {
-            if pattern == "*" || pattern == "./*" {
-                self.process_all_files();
+            let path = Path::new(pattern);
+            if path.exists() {
+                if path.is_dir() {
+                    self.process_directory(path);
+                } else {
+                    self.process_single_file(path);
+                }
             } else {
-                self.process_pattern(pattern);
+                // Treat as a glob pattern
+                self.process_glob_pattern(pattern);
             }
         }
     }
 
-    fn process_all_files(&self) {
+    fn process_glob_pattern(&self, pattern: &str) {
+        let regex = self.pattern_matcher.glob_to_regex(pattern);
         let walker = self.create_walker();
-        for entry in walker.into_iter().filter_entry(|e| !self.is_ignored(e.path())) {
+        
+        for entry in walker.into_iter().filter_entry(|e| self.should_process_entry(e.path())) {
             if let Ok(entry) = entry {
                 let path = entry.path();
-                if path.is_file() {
+                if path.is_file() && regex.is_match(path.to_str().unwrap_or("")) {
                     self.process_single_file(path);
                 }
             }
         }
     }
 
-    fn process_pattern(&self, pattern: &str) {
-        let regex = self.pattern_matcher.glob_to_regex(pattern);
-        let walker = self.create_walker();
-        
-        for entry in walker.into_iter().filter_entry(|e| !self.is_ignored(e.path())) {
+    fn process_directory(&self, dir: &Path) {
+        let walker = WalkDir::new(dir).into_iter();
+        for entry in walker.filter_entry(|e| self.should_process_entry(e.path())) {
             if let Ok(entry) = entry {
                 let path = entry.path();
-                if path.is_file() && regex.is_match(path.to_str().unwrap_or("")) {
+                if path.is_file() {
                     self.process_single_file(path);
                 }
             }
@@ -73,11 +79,17 @@ impl FileProcessor {
         }
     }
 
-    fn is_ignored(&self, path: &Path) -> bool {
+    fn should_process_entry(&self, path: &Path) -> bool {
+        // First check if it's a .git directory or within one
+        if path.components().any(|c| c.as_os_str() == ".git") {
+            return false;
+        }
+
+        // Then check gitignore if enabled
         if let Some(gi) = &self.gitignore {
-            gi.matched(path, path.is_dir()).is_ignore()
+            !gi.matched(path, path.is_dir()).is_ignore()
         } else {
-            false
+            true
         }
     }
 

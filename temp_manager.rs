@@ -9,7 +9,7 @@ pub struct TempManager {
 
 impl TempManager {
     pub fn new() -> Self {
-        let project_dirs = ProjectDirs::from("com", "file-finder", "agg-files")
+        let project_dirs = ProjectDirs::from("com", "seth4242", "agg-files")
             .expect("Failed to get project directories");
         
         let base_dir = project_dirs.cache_dir().to_path_buf();
