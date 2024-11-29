@@ -39,7 +39,7 @@ async fn main() {
         PathBuf::from(".")
     };
 
-    let processor = FileProcessor::new(args, working_dir);
+    let mut processor = FileProcessor::new(args, working_dir);  // Added mut here
     processor.process();
 }
 

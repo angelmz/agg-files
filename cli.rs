@@ -1,3 +1,4 @@
+// cli.rs
 use std::env;
 
 pub struct CliArgs {
@@ -6,6 +7,11 @@ pub struct CliArgs {
     pub patterns: Vec<String>,
     pub github_url: Option<String>,
     pub show_version: bool,
+    pub split_chunks: Option<usize>,
+    pub output_pattern: Option<String>,
+    pub clean_output: bool,
+    pub create_index: bool,
+    pub max_lines: Option<usize>,
 }
 
 impl CliArgs {
@@ -16,6 +22,11 @@ impl CliArgs {
         let mut patterns = Vec::new();
         let mut github_url = None;
         let mut show_version = false;
+        let mut split_chunks = None;
+        let mut output_pattern = None;
+        let mut clean_output = false;
+        let mut create_index = false;
+        let mut max_lines = None;
         let mut i = 1;
 
         while i < args.len() {
@@ -23,6 +34,30 @@ impl CliArgs {
                 "-r" => recursive = true,
                 "-i" => ignore_gitignore = true,
                 "-v" | "--version" => show_version = true,
+                "--clean" => clean_output = true,
+                "--index" => create_index = true,
+                "--max-lines" => {
+                    if i + 1 < args.len() {
+                        if let Ok(n) = args[i + 1].parse::<usize>() {
+                            max_lines = Some(n);
+                        }
+                        i += 1;
+                    }
+                }
+                "-n" | "--chunks" => {
+                    if i + 1 < args.len() {
+                        if let Ok(n) = args[i + 1].parse::<usize>() {
+                            split_chunks = Some(n);
+                        }
+                        i += 1;
+                    }
+                }
+                "-o" | "--output" => {
+                    if i + 1 < args.len() {
+                        output_pattern = Some(args[i + 1].clone());
+                        i += 1;
+                    }
+                }
                 "--url" => {
                     if i + 1 < args.len() {
                         github_url = Some(args[i + 1].clone());
@@ -49,6 +84,11 @@ impl CliArgs {
             patterns,
             github_url,
             show_version,
+            split_chunks,
+            output_pattern,
+            clean_output,
+            create_index,
+            max_lines,
         }
     }
 
@@ -64,9 +104,15 @@ impl CliArgs {
         println!("  -r                  Search recursively");
         println!("  -i                  Ignore .gitignore (include all files)");
         println!("  -v, --version       Show version information");
+        println!("  -n, --chunks <N>    Split output into N files");
+        println!("  -o, --output <pattern>  Output file pattern (e.g., 'part_1.txt')");
+        println!("  --clean             Clean output directory before processing");
+        println!("  --index             Create an index file listing all processed files");
+        println!("  --max-lines <N>     Skip files with more than N lines");
         println!("\nExamples:");
-        println!("  {} --url 'https://github.com/org/repo/tree/main/path' -r", program_name);
-        println!("  {} -r '*.{{rs,toml}}'", program_name);
+        println!("  {} -r --max-lines 1000 '*.rs'", program_name);
+        println!("  {} -n 5 --clean -o 'chunk_1.txt' '*.rs'", program_name);
+        println!("  {} --index -r '**/*.rs'", program_name);
         println!("  {} --version", program_name);
     }
 }
