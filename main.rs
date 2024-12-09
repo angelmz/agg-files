@@ -4,7 +4,7 @@ mod pattern_matcher;
 mod github_handler;
 mod temp_manager;
 mod version;
-mod custom_ignore;
+mod ignore_files_helper;
 
 use cli::CliArgs;
 use file_processor::FileProcessor;

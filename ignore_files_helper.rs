@@ -1,13 +1,12 @@
-// custom_ignore.rs
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::path::Path;
 
-pub struct CustomIgnore {
+pub struct IgnoreFilesHelper {
     gitignore: Option<Gitignore>,
     custom_ignore: Option<Gitignore>,
 }
 
-impl CustomIgnore {
+impl IgnoreFilesHelper {
     pub fn new() -> Self {
         let gitignore = {
             let mut builder = GitignoreBuilder::new(".");

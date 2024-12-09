@@ -1,3 +1,4 @@
+// file_processor.rs
 use std::fs::{self, File, create_dir_all, read_dir};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -5,12 +6,12 @@ use walkdir::WalkDir;
 use chrono::{DateTime, Local};
 
 use crate::cli::CliArgs;
-use crate::custom_ignore::CustomIgnore;
+use crate::ignore_files_helper::IgnoreFilesHelper;
 use crate::pattern_matcher::PatternMatcher;
 
 pub struct FileProcessor {
     args: CliArgs,
-    custom_ignore: Option<CustomIgnore>,
+    ignore_helper: Option<IgnoreFilesHelper>,
     pattern_matcher: PatternMatcher,
     working_dir: PathBuf,
     files_to_process: Vec<PathBuf>,
@@ -19,8 +20,8 @@ pub struct FileProcessor {
 
 impl FileProcessor {
     pub fn new(args: CliArgs, working_dir: PathBuf) -> Self {
-        let custom_ignore = if !args.ignore_gitignore && !args.ignore_custom {
-            Some(CustomIgnore::new())
+        let ignore_helper = if !args.ignore_gitignore && !args.ignore_custom {
+            Some(IgnoreFilesHelper::new())
         } else {
             None
         };
@@ -45,7 +46,7 @@ impl FileProcessor {
 
         Self {
             args,
-            custom_ignore,
+            ignore_helper,
             pattern_matcher: PatternMatcher::new(),
             working_dir,
             files_to_process: Vec::new(),
@@ -53,6 +54,19 @@ impl FileProcessor {
         }
     }
 
+    fn should_process_entry(&self, path: &Path) -> bool {
+        if path.components().any(|c| c.as_os_str() == ".git") {
+            return false;
+        }
+
+        if let Some(ih) = &self.ignore_helper {
+            !ih.is_ignored(path)
+        } else {
+            true
+        }
+    }
+
+    // The rest of the implementation remains the same
     fn is_binary_file(path: &Path) -> bool {
         if let Ok(metadata) = std::fs::metadata(path) {
             // Skip if file is too large (> 1MB) to avoid memory issues
@@ -174,18 +188,6 @@ impl FileProcessor {
                     files.push(path.to_path_buf());
                 }
             }
-        }
-    }
-
-    fn should_process_entry(&self, path: &Path) -> bool {
-        if path.components().any(|c| c.as_os_str() == ".git") {
-            return false;
-        }
-
-        if let Some(ci) = &self.custom_ignore {
-            !ci.is_ignored(path)
-        } else {
-            true
         }
     }
 
