@@ -5,12 +5,12 @@ use walkdir::WalkDir;
 use chrono::{DateTime, Local};
 
 use crate::cli::CliArgs;
-use crate::gitignore_helper::GitignoreHelper;
+use crate::custom_ignore::CustomIgnore;
 use crate::pattern_matcher::PatternMatcher;
 
 pub struct FileProcessor {
     args: CliArgs,
-    gitignore: Option<ignore::gitignore::Gitignore>,
+    custom_ignore: Option<CustomIgnore>,
     pattern_matcher: PatternMatcher,
     working_dir: PathBuf,
     files_to_process: Vec<PathBuf>,
@@ -19,8 +19,8 @@ pub struct FileProcessor {
 
 impl FileProcessor {
     pub fn new(args: CliArgs, working_dir: PathBuf) -> Self {
-        let gitignore = if !args.ignore_gitignore {
-            GitignoreHelper::build()
+        let custom_ignore = if !args.ignore_gitignore && !args.ignore_custom {
+            Some(CustomIgnore::new())
         } else {
             None
         };
@@ -45,7 +45,7 @@ impl FileProcessor {
 
         Self {
             args,
-            gitignore,
+            custom_ignore,
             pattern_matcher: PatternMatcher::new(),
             working_dir,
             files_to_process: Vec::new(),
@@ -177,23 +177,23 @@ impl FileProcessor {
         }
     }
 
-    fn create_walker(&self) -> WalkDir {
-        if self.args.recursive {
-            WalkDir::new(&self.working_dir)
-        } else {
-            WalkDir::new(&self.working_dir).max_depth(1)
-        }
-    }
-
     fn should_process_entry(&self, path: &Path) -> bool {
         if path.components().any(|c| c.as_os_str() == ".git") {
             return false;
         }
 
-        if let Some(gi) = &self.gitignore {
-            !gi.matched(path, path.is_dir()).is_ignore()
+        if let Some(ci) = &self.custom_ignore {
+            !ci.is_ignored(path)
         } else {
             true
+        }
+    }
+
+    fn create_walker(&self) -> WalkDir {
+        if self.args.recursive {
+            WalkDir::new(&self.working_dir)
+        } else {
+            WalkDir::new(&self.working_dir).max_depth(1)
         }
     }
 

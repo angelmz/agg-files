@@ -1,9 +1,9 @@
-// cli.rs
 use std::env;
 
 pub struct CliArgs {
     pub recursive: bool,
     pub ignore_gitignore: bool,
+    pub ignore_custom: bool,  // Make sure this field is added
     pub patterns: Vec<String>,
     pub github_url: Option<String>,
     pub show_version: bool,
@@ -19,6 +19,7 @@ impl CliArgs {
         let args: Vec<String> = env::args().collect();
         let mut recursive = false;
         let mut ignore_gitignore = false;
+        let mut ignore_custom = false;
         let mut patterns = Vec::new();
         let mut github_url = None;
         let mut show_version = false;
@@ -33,6 +34,7 @@ impl CliArgs {
             match args[i].as_str() {
                 "-r" => recursive = true,
                 "-i" => ignore_gitignore = true,
+                "--no-custom-ignore" => ignore_custom = true,
                 "-v" | "--version" => show_version = true,
                 "--clean" => clean_output = true,
                 "--index" => create_index = true,
@@ -81,6 +83,7 @@ impl CliArgs {
         Self {
             recursive,
             ignore_gitignore,
+            ignore_custom,
             patterns,
             github_url,
             show_version,
@@ -100,15 +103,16 @@ impl CliArgs {
         let program_name = env::args().next().unwrap_or_else(|| String::from("program"));
         println!("Usage: {} [OPTIONS] [PATTERNS]", program_name);
         println!("\nOptions:");
-        println!("  --url <github_url>  GitHub repository URL");
-        println!("  -r                  Search recursively");
-        println!("  -i                  Ignore .gitignore (include all files)");
-        println!("  -v, --version       Show version information");
-        println!("  -n, --chunks <N>    Split output into N files");
-        println!("  -o, --output <pattern>  Output file pattern (e.g., 'part_1.txt')");
-        println!("  --clean             Clean output directory before processing");
-        println!("  --index             Create an index file listing all processed files");
-        println!("  --max-lines <N>     Skip files with more than N lines");
+        println!("  --url <github_url>    GitHub repository URL");
+        println!("  -r                    Search recursively");
+        println!("  -i                    Ignore .gitignore (include all files)");
+        println!("  --no-custom-ignore    Ignore the 'to_ignore' file");
+        println!("  -v, --version         Show version information");
+        println!("  -n, --chunks <N>      Split output into N files");
+        println!("  -o, --output <pattern> Output file pattern (e.g., 'part_1.txt')");
+        println!("  --clean               Clean output directory before processing");
+        println!("  --index               Create an index file listing all processed files");
+        println!("  --max-lines <N>       Skip files with more than N lines");
         println!("\nExamples:");
         println!("  {} -r --max-lines 1000 '*.rs'", program_name);
         println!("  {} -n 5 --clean -o 'chunk_1.txt' '*.rs'", program_name);

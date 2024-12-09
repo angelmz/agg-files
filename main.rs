@@ -1,10 +1,10 @@
 mod cli;
 mod file_processor;
-mod gitignore_helper;
 mod pattern_matcher;
 mod github_handler;
 mod temp_manager;
 mod version;
+mod custom_ignore;
 
 use cli::CliArgs;
 use file_processor::FileProcessor;
@@ -39,7 +39,7 @@ async fn main() {
         PathBuf::from(".")
     };
 
-    let mut processor = FileProcessor::new(args, working_dir);  // Added mut here
+    let mut processor = FileProcessor::new(args, working_dir);
     processor.process();
 }
 
