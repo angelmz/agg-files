@@ -40,7 +40,7 @@ impl FileProcessor {
         let formatted_time = datetime.format("%Y%m%d_%H%M%S").to_string();
 
         // Create the output directory path with timestamp
-        let output_dir = PathBuf::from("/Users/villanelle/agg-output")
+        let output_dir = PathBuf::from("/Users/angel/agg-output")
             .join(format!("{}_{}", current_dir_name, formatted_time));
 
         Self {
