@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use std::collections::HashSet;
 use chrono::{DateTime, FixedOffset};
 
-pub struct GitHistoryHandler {
+pub struct GitStatusHandler {
     working_dir: PathBuf,
 }
 
-impl GitHistoryHandler {
+impl GitStatusHandler {
     pub fn new(working_dir: PathBuf) -> Self {
         Self { working_dir }
     }

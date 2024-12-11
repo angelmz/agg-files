@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use crate::cli::CliArgs;
 use crate::ignore_files_helper::IgnoreFilesHelper;
 use crate::pattern_matcher::PatternMatcher;
-use crate::git_status_handler::GitHistoryHandler;
+use crate::git_status_handler::GitStatusHandler;
 
 pub struct FileProcessor {
     args: CliArgs,
@@ -19,7 +19,7 @@ pub struct FileProcessor {
     ignored_files: HashSet<PathBuf>,
     processed_files: HashSet<PathBuf>,
     output_dir: PathBuf,
-    git_status_handler: Option<GitHistoryHandler>,
+    git_status_handler: Option<GitStatusHandler>,
 }
 
 impl FileProcessor {
@@ -31,7 +31,7 @@ impl FileProcessor {
         };
 
         let git_status_handler = if args.git_changes {
-            Some(GitHistoryHandler::new(working_dir.clone()))
+            Some(GitStatusHandler::new(working_dir.clone()))
         } else {
             None
         };
@@ -393,7 +393,7 @@ impl FileProcessor {
     
         // Always try to create git changes file if git_changes is true
         if self.args.git_changes {
-            let git_status_handler = GitHistoryHandler::new(self.working_dir.clone());
+            let git_status_handler = GitStatusHandler::new(self.working_dir.clone());
             if git_status_handler.is_git_repository() {
                 self.git_status_handler = Some(git_status_handler);
                 self.process_with_git_history();
