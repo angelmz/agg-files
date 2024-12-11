@@ -11,6 +11,8 @@ pub struct CliArgs {
     pub output_pattern: Option<String>,
     pub create_index: bool,
     pub max_lines: Option<usize>,
+    pub git_changes: bool,
+    pub git_since: Option<String>,
 }
 
 impl CliArgs {
@@ -26,8 +28,10 @@ impl CliArgs {
         let mut output_pattern = None;
         let mut create_index = false;
         let mut max_lines = None;
+        let mut git_changes = true;  // Default to true
+        let mut git_since = None;
         let mut i = 1;
-
+    
         while i < args.len() {
             match args[i].as_str() {
                 "-r" => recursive = true,
@@ -35,6 +39,13 @@ impl CliArgs {
                 "--no-custom-ignore" => ignore_custom = true,
                 "-v" | "--version" => show_version = true,
                 "--index" => create_index = true,
+                "--no-git-changes" => git_changes = false,  // Added option to disable git changes
+                "--git-since" => {
+                    if i + 1 < args.len() {
+                        git_since = Some(args[i + 1].clone());
+                        i += 1;
+                    }
+                }
                 "--max-lines" => {
                     if i + 1 < args.len() {
                         if let Ok(n) = args[i + 1].parse::<usize>() {
@@ -71,12 +82,12 @@ impl CliArgs {
             }
             i += 1;
         }
-
+    
         // If no patterns specified and URL is provided, default to all files
         if patterns.is_empty() && github_url.is_some() {
             patterns.push("*".to_string());
         }
-
+    
         Self {
             recursive,
             ignore_gitignore,
@@ -88,9 +99,11 @@ impl CliArgs {
             output_pattern,
             create_index,
             max_lines,
+            git_changes,
+            git_since,
         }
     }
-
+    
     pub fn is_valid(&self) -> bool {
         self.show_version || !self.patterns.is_empty() || self.github_url.is_some()
     }
@@ -108,10 +121,12 @@ impl CliArgs {
         println!("  -o, --output <pattern> Output file pattern (e.g., 'output.txt')");
         println!("  --index               Create additional files listing read and ignored files");
         println!("  --max-lines <N>       Skip files with more than N lines");
+        println!("  --git-changes         Only include files with git history changes");
+        println!("  --git-since <date>    Only include files changed since date (RFC3339 format)");
         println!("\nExamples:");
         println!("  {} -r --max-lines 1000 '*.rs'", program_name);
         println!("  {} -n 5 -o 'part_1.txt' '*.rs'", program_name);
-        println!("  {} --index -r '**/*.rs'", program_name);
+        println!("  {} --git-changes --git-since '2024-01-01T00:00:00Z' '*.rs'", program_name);
         println!("  {} --url 'https://github.com/username/repo' -r '*.rs'", program_name);
     }
 }

@@ -5,6 +5,7 @@ mod github_handler;
 mod temp_manager;
 mod version;
 mod ignore_files_helper;
+mod git_status_handler;
 
 use cli::CliArgs;
 use file_processor::FileProcessor;

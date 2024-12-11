@@ -2,12 +2,13 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use chrono::Local;
+use chrono::{Local, DateTime};
 use std::collections::HashSet;
 
 use crate::cli::CliArgs;
 use crate::ignore_files_helper::IgnoreFilesHelper;
 use crate::pattern_matcher::PatternMatcher;
+use crate::git_status_handler::GitHistoryHandler;
 
 pub struct FileProcessor {
     args: CliArgs,
@@ -18,12 +19,19 @@ pub struct FileProcessor {
     ignored_files: HashSet<PathBuf>,
     processed_files: HashSet<PathBuf>,
     output_dir: PathBuf,
+    git_status_handler: Option<GitHistoryHandler>,
 }
 
 impl FileProcessor {
     pub fn new(args: CliArgs, working_dir: PathBuf) -> Self {
         let ignore_helper = if !args.ignore_gitignore && !args.ignore_custom {
             Some(IgnoreFilesHelper::new())
+        } else {
+            None
+        };
+
+        let git_status_handler = if args.git_changes {
+            Some(GitHistoryHandler::new(working_dir.clone()))
         } else {
             None
         };
@@ -45,6 +53,7 @@ impl FileProcessor {
             ignored_files: HashSet::new(),
             processed_files: HashSet::new(),
             output_dir,
+            git_status_handler,
         }
     }
 
@@ -319,6 +328,56 @@ impl FileProcessor {
         Ok(())
     }
 
+    fn process_with_git_history(&mut self) -> Vec<PathBuf> {
+        if let Some(handler) = &self.git_status_handler {
+            if !handler.is_git_repository() {
+                eprintln!("Warning: Not a git repository. Skipping git history filtering.");
+                return Vec::new();
+            }
+            
+            let since_date = self.args.git_since.as_ref()
+                .and_then(|date_str| DateTime::parse_from_rfc3339(date_str).ok());
+                
+            let changed_files = handler.get_changed_files(since_date);
+            
+            // Create a new Vec with only the changed files
+            let git_changed_files: Vec<PathBuf> = self.files_to_process.iter()
+                .filter(|file| changed_files.contains(*file))
+                .cloned()
+                .collect();
+            
+            // Create a separate output file for changed files
+            let output_path = self.get_output_filename(None, None, "git_changes");
+            
+            match File::create(&output_path) {
+                Ok(mut file) => {
+                    let mut success_count = 0;
+                    let mut total_size = 0;
+                    
+                    for path in &git_changed_files {
+                        if let Ok(size) = fs::metadata(path).map(|m| m.len() as usize) {
+                            total_size += size;
+                        }
+                        if self.process_file(path, &mut file).is_ok() {
+                            success_count += 1;
+                        }
+                    }
+                    
+                    println!("Created git changes file: {} ({} files, size: {})",
+                        output_path.display(),
+                        success_count,
+                        Self::format_size(total_size)
+                    );
+                }
+                Err(e) => eprintln!("Error creating git changes file: {}", e),
+            }
+            
+            git_changed_files
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn process(&mut self) {
         if self.files_to_process.is_empty() {
             self.collect_files();
@@ -328,7 +387,24 @@ impl FileProcessor {
             println!("No files found matching the patterns.");
             return;
         }
-
+    
+        // Store original files
+        let original_files = self.files_to_process.clone();
+    
+        // Always try to create git changes file if git_changes is true
+        if self.args.git_changes {
+            let git_status_handler = GitHistoryHandler::new(self.working_dir.clone());
+            if git_status_handler.is_git_repository() {
+                self.git_status_handler = Some(git_status_handler);
+                self.process_with_git_history();
+            } else {
+                println!("Note: Not a git repository - skipping git changes output");
+            }
+        }
+    
+        // Restore original files for normal processing
+        self.files_to_process = original_files;
+    
         // Process main output file
         let chunks = self.distribute_files();
         println!("\nSaving files to: {}", self.output_dir.display());
@@ -343,7 +419,7 @@ impl FileProcessor {
                 Some(chunks.len()).filter(|_| chunks.len() > 1),
                 "main"
             );
-
+    
             match File::create(&output_path) {
                 Ok(mut file) => {
                     let mut success_count = 0;
@@ -366,7 +442,7 @@ impl FileProcessor {
                 Err(e) => eprintln!("Error creating output file {}: {}", output_path.display(), e),
             }
         }
-
+    
         // Optionally write files_read.txt
         if self.args.create_index {
             if let Err(e) = self.write_file_list(
