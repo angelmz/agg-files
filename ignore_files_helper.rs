@@ -1,5 +1,5 @@
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct IgnoreFilesHelper {
     gitignore: Option<Gitignore>,
@@ -18,7 +18,14 @@ impl IgnoreFilesHelper {
 
         let custom_ignore = {
             let mut builder = GitignoreBuilder::new(".");
-            match builder.add("to_ignore") {
+            let custom_ignore_path = PathBuf::from("dev_tools").join("to_ignore.txt");
+            let result = if custom_ignore_path.exists() {
+                builder.add(&custom_ignore_path)
+            } else {
+                builder.add("to_ignore")
+            };
+
+            match result {
                 None => builder.build().ok(),
                 Some(_) => None,
             }
