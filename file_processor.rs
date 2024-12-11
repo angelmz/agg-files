@@ -226,6 +226,19 @@ impl FileProcessor {
     }
 
     fn get_output_filename(&self, index: usize, total_chunks: usize) -> PathBuf {
+        let current_dir_name = self.working_dir
+            .canonicalize()
+            .map(|p| {
+                p.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("unknown_dir")
+                    .to_owned()
+            })
+            .unwrap_or_else(|_| "unknown_dir".to_owned());
+    
+        let datetime = Local::now();
+        let formatted_time = datetime.format("%Y%m%d_%H%M%S").to_string();
+        
         let filename = if let Some(pattern) = &self.args.output_pattern {
             if total_chunks > 1 {
                 pattern.replace("{}", &(index + 1).to_string())
@@ -233,11 +246,11 @@ impl FileProcessor {
                 pattern.replace("{}", "")
             }
         } else if total_chunks > 1 {
-            format!("output_{}.txt", index + 1)
+            format!("{}_{}_part_{}.txt", current_dir_name, formatted_time, index + 1)
         } else {
-            "output.txt".to_string()
+            format!("{}_{}.txt", current_dir_name, formatted_time)
         };
-
+    
         self.output_dir.join(filename)
     }
 
