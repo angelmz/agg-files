@@ -1,8 +1,8 @@
-use std::fs::{self, File, create_dir_all, read_dir};
+use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-use chrono::{DateTime, Local};
+use chrono::Local;
 use std::collections::HashSet;
 
 use crate::cli::CliArgs;
@@ -28,20 +28,13 @@ impl FileProcessor {
             None
         };
 
-        let current_dir_name = working_dir
-            .canonicalize()
-            .map(|p| {
-                p.file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("unknown_dir")
-                    .to_owned()
-            })
-            .unwrap_or_else(|_| "unknown_dir".to_owned());
-
-        let datetime: DateTime<Local> = Local::now();
-        let formatted_time = datetime.format("%Y%m%d_%H%M%S").to_string();
-        let output_dir = PathBuf::from("/Users/angel/agg-output")
-            .join(format!("{}_{}", current_dir_name, formatted_time));
+        // Set up output directory
+        let output_dir = PathBuf::from("/Users/angel/agg-output");
+        if !output_dir.exists() {
+            if let Err(e) = fs::create_dir_all(&output_dir) {
+                eprintln!("Warning: Could not create output directory: {}", e);
+            }
+        }
 
         Self {
             args,
@@ -110,25 +103,6 @@ impl FileProcessor {
         }
     }
 
-    fn clean_output_directory(&self) -> std::io::Result<()> {
-        if self.output_dir.exists() {
-            println!("Cleaning output directory: {}", self.output_dir.display());
-            for entry in read_dir(&self.output_dir)? {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.is_file() {
-                        if let Err(e) = fs::remove_file(&path) {
-                            eprintln!("Warning: Could not remove file {}: {}", path.display(), e);
-                        }
-                    }
-                }
-            }
-            println!("Output directory cleaned.");
-        }
-        create_dir_all(&self.output_dir)?;
-        Ok(())
-    }
-
     fn collect_files(&mut self) {
         let mut files = Vec::new();
         let patterns = self.args.patterns.clone();
@@ -153,9 +127,12 @@ impl FileProcessor {
 
     fn collect_from_glob_pattern(&mut self, pattern: &str, files: &mut Vec<PathBuf>) {
         let regex = self.pattern_matcher.glob_to_regex(pattern);
-        let walker = self.create_walker();
+        let walker = if self.args.recursive {
+            WalkDir::new(&self.working_dir)
+        } else {
+            WalkDir::new(&self.working_dir).max_depth(1)
+        };
         
-        // Create a closure that doesn't capture self
         let should_process = |path: &Path| -> bool {
             !path.components().any(|c| c.as_os_str() == ".git") && 
             if let Some(ih) = &self.ignore_helper {
@@ -165,15 +142,11 @@ impl FileProcessor {
             }
         };
         
-        // Collect all entries first
-        let entries: Vec<_> = walker.into_iter()
+        for entry in walker.into_iter()
             .filter_entry(|e| should_process(e.path()))
             .filter_map(Result::ok)
             .filter(|e| e.path().is_file())
-            .collect();
-    
-        // Process entries
-        for entry in entries {
+        {
             let path = entry.path();
             if regex.is_match(path.to_str().unwrap_or("")) && self.should_include_file(path) {
                 self.processed_files.insert(path.to_path_buf());
@@ -182,12 +155,15 @@ impl FileProcessor {
                 self.ignored_files.insert(path.to_path_buf());
             }
         }
-    }    
-    
+    }
+
     fn collect_from_directory(&mut self, dir: &Path, files: &mut Vec<PathBuf>) {
-        let walker = WalkDir::new(dir);
+        let walker = if self.args.recursive {
+            WalkDir::new(dir)
+        } else {
+            WalkDir::new(dir).max_depth(1)
+        };
         
-        // Create a closure that doesn't capture self
         let should_process = |path: &Path| -> bool {
             !path.components().any(|c| c.as_os_str() == ".git") && 
             if let Some(ih) = &self.ignore_helper {
@@ -197,15 +173,11 @@ impl FileProcessor {
             }
         };
         
-        // Collect all entries first
-        let entries: Vec<_> = walker.into_iter()
+        for entry in walker.into_iter()
             .filter_entry(|e| should_process(e.path()))
             .filter_map(Result::ok)
             .filter(|e| e.path().is_file())
-            .collect();
-    
-        // Process entries
-        for entry in entries {
+        {
             let path = entry.path();
             if self.should_include_file(path) {
                 self.processed_files.insert(path.to_path_buf());
@@ -215,27 +187,33 @@ impl FileProcessor {
             }
         }
     }
-    
 
-    fn create_walker(&self) -> WalkDir {
-        if self.args.recursive {
-            WalkDir::new(&self.working_dir)
-        } else {
-            WalkDir::new(&self.working_dir).max_depth(1)
-        }
-    }
+    fn get_output_filename(&self, index: Option<usize>, total_chunks: Option<usize>, file_type: &str) -> PathBuf {
+        let current_dir_name = self.working_dir
+            .canonicalize()
+            .map(|p| {
+                p.file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("unknown_dir")
+                    .to_owned()
+            })
+            .unwrap_or_else(|_| "unknown_dir".to_owned());
 
-    fn get_output_filename(&self, index: usize, total_chunks: usize) -> PathBuf {
+        let datetime = Local::now();
+        let formatted_time = datetime.format("%Y%m%d_%H%M%S").to_string();
+        
         let filename = if let Some(pattern) = &self.args.output_pattern {
-            if total_chunks > 1 {
-                pattern.replace("{}", &(index + 1).to_string())
+            if let (Some(idx), Some(_)) = (index, total_chunks) {
+                pattern.replace("{}", &(idx + 1).to_string())
             } else {
                 pattern.replace("{}", "")
             }
-        } else if total_chunks > 1 {
-            format!("output_{}.txt", index + 1)
+        } else if let (Some(idx), Some(_)) = (index, total_chunks) {
+            format!("{}_{}_part_{}.txt", current_dir_name, formatted_time, idx + 1)
+        } else if file_type == "main" {
+            format!("{}_{}.txt", current_dir_name, formatted_time)
         } else {
-            "output.txt".to_string()
+            format!("{}_{}_{}s.txt", current_dir_name, formatted_time, file_type)
         };
 
         self.output_dir.join(filename)
@@ -318,57 +296,8 @@ impl FileProcessor {
         Ok(())
     }
 
-    fn create_index_file(&self) -> std::io::Result<()> {
-        let index_path = self.output_dir.join("file_index.txt");
-        let mut index_file = File::create(&index_path)?;
-        
-        let working_dir = std::env::current_dir()?;
-        
-        writeln!(index_file, "File Index")?;
-        writeln!(index_file, "==========\n")?;
-        writeln!(index_file, "Working Directory: {}", working_dir.display())?;
-        if let Some(max_lines) = self.args.max_lines {
-            writeln!(index_file, "Maximum Lines Per File: {}\n", max_lines)?;
-        }
-        
-        let mut sorted_files = self.files_to_process.clone();
-        sorted_files.sort();
-        
-        for file in sorted_files {
-            let display_path = if let Ok(rel_path) = file.strip_prefix(&working_dir) {
-                rel_path.to_path_buf()
-            } else {
-                file.clone()
-            };
-            
-            if let Some(parent) = display_path.parent() {
-                writeln!(index_file, "Directory: {}", parent.display())?;
-                writeln!(index_file, "File: {}", display_path.file_name().unwrap_or_default().to_string_lossy())?;
-            } else {
-                writeln!(index_file, "File: {}", display_path.display())?;
-            }
-            
-            if let Ok(metadata) = file.metadata() {
-                writeln!(index_file, "Size: {}", Self::format_size(metadata.len() as usize))?;
-                if let Ok(line_count) = Self::count_lines(&file) {
-                    writeln!(index_file, "Lines: {}", line_count)?;
-                }
-                if let Ok(modified) = metadata.modified() {
-                    if let Ok(modified_time) = modified.duration_since(std::time::UNIX_EPOCH) {
-                        writeln!(index_file, "Last Modified: {} seconds since epoch", modified_time.as_secs())?;
-                    }
-                }
-            }
-            writeln!(index_file, "---")?;
-        }
-        
-        println!("Created index file: {}", index_path.display());
-        Ok(())
-    }
-
-    fn write_file_list(&self, filename: &str, files: &HashSet<PathBuf>) -> std::io::Result<()> {
-        let output_path = self.output_dir.join(filename);
-        let mut file = File::create(&output_path)?;
+    fn write_file_list(&self, filename: PathBuf, files: &HashSet<PathBuf>) -> std::io::Result<()> {
+        let mut file = File::create(&filename)?;
         
         let working_dir = std::env::current_dir()?;
         writeln!(file, "Working Directory: {}\n", working_dir.display())?;
@@ -383,51 +312,24 @@ impl FileProcessor {
                 path.clone()
             };
             
-            if let Some(parent) = relative_path.parent() {
-                writeln!(file, "Directory: {}", parent.display())?;
-                writeln!(
-                    file,
-                    "File: {}",
-                    relative_path.file_name().unwrap_or_default().to_string_lossy()
-                )?;
-            } else {
-                writeln!(file, "File: {}", relative_path.display())?;
-            }
-            writeln!(file, "---")?;
+            writeln!(file, "File: {}", relative_path.display())?;
         }
         
-        println!("Created {}: {}", filename, output_path.display());
+        println!("Created: {}", filename.display());
         Ok(())
     }
 
     pub fn process(&mut self) {
-        // Handle directory cleaning and creation
-        if self.args.clean_output {
-            if let Err(e) = self.clean_output_directory() {
-                eprintln!("Error cleaning output directory: {}", e);
-                return;
-            }
-        } else if let Err(e) = create_dir_all(&self.output_dir) {
-            eprintln!("Error creating output directory: {}", e);
-            return;
+        if self.files_to_process.is_empty() {
+            self.collect_files();
         }
-
-        // Collect files
-        self.collect_files();
         
         if self.files_to_process.is_empty() {
             println!("No files found matching the patterns.");
             return;
         }
 
-        // Create index file if requested
-        if self.args.create_index {
-            if let Err(e) = self.create_index_file() {
-                eprintln!("Error creating index file: {}", e);
-            }
-        }
-        
-        // Process files and create output.txt
+        // Process main output file
         let chunks = self.distribute_files();
         println!("\nSaving files to: {}", self.output_dir.display());
         
@@ -436,7 +338,12 @@ impl FileProcessor {
                 continue;
             }
             
-            let output_path = self.get_output_filename(i, chunks.len());
+            let output_path = self.get_output_filename(
+                Some(i).filter(|_| chunks.len() > 1),
+                Some(chunks.len()).filter(|_| chunks.len() > 1),
+                "main"
+            );
+
             match File::create(&output_path) {
                 Ok(mut file) => {
                     let mut success_count = 0;
@@ -450,7 +357,7 @@ impl FileProcessor {
                             success_count += 1;
                         }
                     }
-                    println!("Created {} ({} files, total size: {})", 
+                    println!("Created {} ({} files, TOTAL size: {})", 
                         output_path.display(), 
                         success_count,
                         Self::format_size(chunk_size)
@@ -460,15 +367,26 @@ impl FileProcessor {
             }
         }
 
-        // Write files_read.txt and files_ignored.txt
-        if let Err(e) = self.write_file_list("files_read.txt", &self.processed_files) {
-            eprintln!("Error writing files_read.txt: {}", e);
+        // Optionally write files_read.txt
+        if self.args.create_index {
+            if let Err(e) = self.write_file_list(
+                self.get_output_filename(None, None, "read"),
+                &self.processed_files
+            ) {
+                eprintln!("Error writing read files list: {}", e);
+            }
         }
         
-        if let Err(e) = self.write_file_list("files_ignored.txt", &self.ignored_files) {
-            eprintln!("Error writing files_ignored.txt: {}", e);
+        // Optionally write files_ignored.txt
+        if !self.ignored_files.is_empty() && self.args.create_index {
+            if let Err(e) = self.write_file_list(
+                self.get_output_filename(None, None, "ignored"),
+                &self.ignored_files
+            ) {
+                eprintln!("Error writing ignored files list: {}", e);
+            }
         }
         
-        println!("\nProcessing complete. All files saved to: {}", self.output_dir.display());
+        println!("\nProcessing complete!");
     }
 }

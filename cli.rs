@@ -3,13 +3,12 @@ use std::env;
 pub struct CliArgs {
     pub recursive: bool,
     pub ignore_gitignore: bool,
-    pub ignore_custom: bool,  // Make sure this field is added
+    pub ignore_custom: bool,
     pub patterns: Vec<String>,
     pub github_url: Option<String>,
     pub show_version: bool,
     pub split_chunks: Option<usize>,
     pub output_pattern: Option<String>,
-    pub clean_output: bool,
     pub create_index: bool,
     pub max_lines: Option<usize>,
 }
@@ -25,7 +24,6 @@ impl CliArgs {
         let mut show_version = false;
         let mut split_chunks = None;
         let mut output_pattern = None;
-        let mut clean_output = false;
         let mut create_index = false;
         let mut max_lines = None;
         let mut i = 1;
@@ -36,7 +34,6 @@ impl CliArgs {
                 "-i" => ignore_gitignore = true,
                 "--no-custom-ignore" => ignore_custom = true,
                 "-v" | "--version" => show_version = true,
-                "--clean" => clean_output = true,
                 "--index" => create_index = true,
                 "--max-lines" => {
                     if i + 1 < args.len() {
@@ -89,7 +86,6 @@ impl CliArgs {
             show_version,
             split_chunks,
             output_pattern,
-            clean_output,
             create_index,
             max_lines,
         }
@@ -109,14 +105,13 @@ impl CliArgs {
         println!("  --no-custom-ignore    Ignore the 'to_ignore' file");
         println!("  -v, --version         Show version information");
         println!("  -n, --chunks <N>      Split output into N files");
-        println!("  -o, --output <pattern> Output file pattern (e.g., 'part_1.txt')");
-        println!("  --clean               Clean output directory before processing");
-        println!("  --index               Create an index file listing all processed files");
+        println!("  -o, --output <pattern> Output file pattern (e.g., 'output.txt')");
+        println!("  --index               Create additional files listing read and ignored files");
         println!("  --max-lines <N>       Skip files with more than N lines");
         println!("\nExamples:");
         println!("  {} -r --max-lines 1000 '*.rs'", program_name);
-        println!("  {} -n 5 --clean -o 'chunk_1.txt' '*.rs'", program_name);
+        println!("  {} -n 5 -o 'part_1.txt' '*.rs'", program_name);
         println!("  {} --index -r '**/*.rs'", program_name);
-        println!("  {} --version", program_name);
+        println!("  {} --url 'https://github.com/username/repo' -r '*.rs'", program_name);
     }
 }
