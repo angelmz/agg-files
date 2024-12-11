@@ -12,10 +12,20 @@ impl GitHistoryHandler {
         Self { working_dir }
     }
 
+    fn is_staged(&self, file_path: &str) -> bool {
+        let mut cmd = Command::new("git");
+        cmd.current_dir(&self.working_dir);
+        cmd.args(["diff", "--cached", "--name-only", file_path]);
+        
+        cmd.output()
+            .map(|output| !output.stdout.is_empty())
+            .unwrap_or(false)
+    }
+
     pub fn get_changed_files(&self, since: Option<DateTime<FixedOffset>>) -> HashSet<PathBuf> {
         let mut changed_files = HashSet::new();
         
-        // First get modified files from git status
+        // Get modified files from git status
         let mut status_cmd = Command::new("git");
         status_cmd.current_dir(&self.working_dir);
         status_cmd.args(["status", "--porcelain"]);
@@ -23,17 +33,19 @@ impl GitHistoryHandler {
         if let Ok(output) = status_cmd.output() {
             if let Ok(files_str) = String::from_utf8(output.stdout) {
                 for line in files_str.lines() {
-                    if let Some(file_path) = line.get(3..) {  // Skip the status codes (first 3 chars)
-                        let path = self.working_dir.join(file_path);
-                        if path.exists() {
-                            changed_files.insert(path);
+                    if let Some(file_path) = line.get(3..) {  // Skip the status codes
+                        if !self.is_staged(file_path) {  // Only include if not staged
+                            let path = self.working_dir.join(file_path);
+                            if path.exists() {
+                                changed_files.insert(path);
+                            }
                         }
                     }
                 }
             }
         }
 
-        // If a since date is provided, also get recently committed files
+        // Include committed files if since date is provided
         if let Some(date) = since {
             let mut log_cmd = Command::new("git");
             log_cmd.current_dir(&self.working_dir);
