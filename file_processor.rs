@@ -222,7 +222,9 @@ impl FileProcessor {
         } else if file_type == "main" {
             format!("{}_{}.txt", current_dir_name, formatted_time)
         } else {
-            format!("{}_{}_{}s.txt", current_dir_name, formatted_time, file_type)
+            // Convert "git_changes" to just "git", otherwise use file_type as is
+            let prefix = if file_type == "git_changes" { "git" } else { file_type };
+            format!("{}_{}_{}.txt", prefix, current_dir_name, formatted_time)
         };
 
         self.output_dir.join(filename)
@@ -337,42 +339,63 @@ impl FileProcessor {
             
             let since_date = self.args.git_since.as_ref()
                 .and_then(|date_str| DateTime::parse_from_rfc3339(date_str).ok());
-                
-            let changed_files = handler.get_changed_files(since_date);
-            
-            // Create a new Vec with only the changed files
-            let git_changed_files: Vec<PathBuf> = self.files_to_process.iter()
-                .filter(|file| changed_files.contains(*file))
-                .cloned()
-                .collect();
+                    
+            let changes = handler.get_changed_files(since_date);
             
             // Create a separate output file for changed files
             let output_path = self.get_output_filename(None, None, "git_changes");
             
             match File::create(&output_path) {
                 Ok(mut file) => {
-                    let mut success_count = 0;
+                    let mut modified_count = 0;
+                    let mut untracked_count = 0;
                     let mut total_size = 0;
                     
-                    for path in &git_changed_files {
+                    // Write modified files
+                    writeln!(&mut file, "# Modified Files:").unwrap_or(());
+                    for path in &changes.modified_files {
                         if let Ok(size) = fs::metadata(path).map(|m| m.len() as usize) {
                             total_size += size;
                         }
                         if self.process_file(path, &mut file).is_ok() {
-                            success_count += 1;
+                            modified_count += 1;
                         }
                     }
                     
-                    println!("Created git changes file: {} ({} files, size: {})",
+                    // Write untracked files
+                    writeln!(&mut file, "\n# Untracked Files:").unwrap_or(());
+                    for path in &changes.untracked_files {
+                        if let Ok(size) = fs::metadata(path).map(|m| m.len() as usize) {
+                            total_size += size;
+                        }
+                        if self.process_file(path, &mut file).is_ok() {
+                            untracked_count += 1;
+                        }
+                    }
+                    
+                    // Write deleted files
+                    writeln!(&mut file, "\n# Deleted Files:").unwrap_or(());
+                    for path in &changes.deleted_files {
+                        if let Ok(rel_path) = path.strip_prefix(&self.working_dir) {
+                            writeln!(&mut file, "{}", rel_path.display()).unwrap_or(());
+                        }
+                    }
+                    
+                    println!("Created git changes file: {} ({} modified, {} untracked, {} deleted, total size: {})",
                         output_path.display(),
-                        success_count,
+                        modified_count,
+                        untracked_count,
+                        changes.deleted_files.len(),
                         Self::format_size(total_size)
                     );
                 }
                 Err(e) => eprintln!("Error creating git changes file: {}", e),
             }
             
-            git_changed_files
+            // Return all files that should be processed (modified and untracked)
+            changes.modified_files.union(&changes.untracked_files)
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         }
